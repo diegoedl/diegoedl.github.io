@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Diego Rosas, film editor based in Mexico City.">
+<title>Diego Rosas — Film Editor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,300..900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  /* Layout: a scrubbable "timeline" hero (variable type + waveform + playhead), reel, work grid, profile, contact */
+  /* Palette: grayscale everywhere, one orange accent for the timeline (playhead, waveform) and for interaction */
+  :root {
+    --paper: #e4e4e2;
+    --surface: #d2d2d0;
+    --line: #c2c2c0;
+    --ink: #121212;
+    --ink-muted: #575755;
+    --on-ink: #e4e4e2;
+    --film: #0a0a0a;
+    --film-ink: #f2f2f0;
+    --heat-o: #ff6a13;
+    --font-display: "Anybody", "Arial Black", Impact, sans-serif;
+    --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f0f0f; --surface: #1c1c1b; --line: #2c2c2b;
+      --ink: #ececea; --ink-muted: #8c8c8a; --on-ink: #0f0f0f;
+      --heat-o: #ff8a2a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f0f0f; --surface: #1c1c1b; --line: #2c2c2b;
+    --ink: #ececea; --ink-muted: #8c8c8a; --on-ink: #0f0f0f;
+      --heat-o: #ff8a2a;
+    color-scheme: dark;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  ::selection { background: var(--heat-o); color: var(--film); }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 16px/1.65 var(--font-sans);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    opacity: .38; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .display {
+    font-family: var(--font-display); font-weight: 800; font-stretch: 100%;
+    text-transform: uppercase; letter-spacing: -.01em; line-height: .9;
+  }
+  .label {
+    font-size: .72rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .16em; color: var(--ink-muted); margin: 0;
+  }
+  .mono { font-family: var(--font-mono); font-weight: 500; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--heat-o); outline-offset: 3px; }
+
+  /* Header */
+  .top {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+    padding: 20px 0; border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  /* small name: static, frozen mid-ripple (per-letter width and weight), in ink */
+  .brand { min-width: 14rem; }
+  .brand-name {
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: 1.45rem; line-height: 1; letter-spacing: 0; white-space: nowrap;
+    display: inline-flex; align-items: baseline;
+    color: var(--ink);
+  }
+  .brand-name i { font-style: normal; display: inline-block; font-stretch: var(--w, 100%); font-weight: var(--wt, 700); }
+  .brand-name i.gap { width: .3em; }
+  .top nav { display: flex; gap: 24px; flex-wrap: wrap; }
+  .top nav a {
+    color: var(--ink-muted); text-decoration: none;
+    font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .16em;
+    padding-bottom: 3px; border-bottom: 2px solid transparent;
+  }
+  .top nav a:hover { color: var(--ink); border-color: var(--ink); }
+
+  /* Timeline hero */
+  .stage {
+    position: relative; overflow: hidden;
+    margin-top: 28px; padding: 18px 0 20px;
+    touch-action: pan-y; cursor: ew-resize;
+    border-bottom: 1px solid var(--line);
+  }
+  .hud {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px;
+  }
+  .ruler {
+    height: 14px; min-width: 0;
+    background:
+      repeating-linear-gradient(90deg, var(--ink-muted) 0 1px, transparent 1px 64px) bottom / 100% 14px no-repeat,
+      repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 8px) bottom / 100% 7px no-repeat;
+  }
+  .tc-read { font-size: .85rem; color: var(--ink); }
+  .tc-read b { font-weight: 500; color: var(--ink-muted); margin-right: 8px; font-size: .7rem; letter-spacing: .16em; }
+
+  .name {
+    margin: 26px 0 14px; display: flex; flex-wrap: wrap; column-gap: .22em;
+    font-size: clamp(3.4rem, 11.5vw, 9rem); white-space: nowrap;
+  }
+  .name .word { display: inline-flex; }
+  .name .ch { display: inline-block; font-stretch: 100%; font-weight: 800; }
+
+  .wave { display: block; width: 100%; height: 64px; }
+
+  .playhead {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 2px; pointer-events: none;
+    background: var(--heat-o);
+    box-shadow: 0 0 12px var(--heat-o);
+    will-change: transform;
+  }
+  .playhead::before {
+    content: ""; position: absolute; top: 0; left: -6px;
+    border: 7px solid transparent; border-top: 9px solid var(--heat-o);
+  }
+
+  .meta-row {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+    gap: 6px 24px; margin-top: 20px;
+  }
+  .meta-line { margin: 0; font-size: 1.05rem; }
+
+  /* Reel */
+  .reel {
+    position: relative; overflow: hidden; margin: 40px 0 72px;
+    aspect-ratio: 21 / 9; max-width: 100%;
+    background:
+      radial-gradient(ellipse at 60% 45%, #343433, var(--film) 75%);
+    color: var(--film-ink);
+  }
+  a.reel { display: block; text-decoration: none; transition: box-shadow .2s ease; }
+  a.reel:hover, a.reel:focus-visible { box-shadow: 0 0 0 2px var(--heat-o); }
+  .reel img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .reel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, .6), transparent 50%); pointer-events: none; }
+  .reel-info {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px;
+    padding: 20px; z-index: 1;
+  }
+  .tag { font-size: .75rem; color: var(--film-ink); opacity: .8; }
+  .reel-info .watch {
+    text-decoration: none; color: var(--film-ink); font-size: .72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .16em; border-bottom: 1px solid var(--film-ink); padding-bottom: 3px;
+  }
+
+  /* Sections */
+  section { padding: 96px 0; border-top: 1px solid var(--line); }
+  .stage + section { border-top: 0; }
+  .sec-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 48px;
+  }
+  h2 { font-size: clamp(2.6rem, 7vw, 5rem); margin: 0; }
+
+  /* Work */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filters button {
+    font: inherit; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .14em;
+    cursor: pointer; background: transparent; color: var(--ink-muted);
+    border: 1px solid var(--line); padding: 8px 12px;
+  }
+  .filters button:hover { color: var(--ink); border-color: var(--ink); }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+
+  .work-grid {
+    display: grid; gap: 48px 28px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  .thumb {
+    position: relative; overflow: hidden; aspect-ratio: 16 / 9;
+    background: var(--film); color: var(--film-ink);
+    transition: box-shadow .2s ease;
+  }
+  .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* hover preview: Vimeo background player (muted, looped, no controls) laid over the still */
+  .thumb .preview {
+    position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+    pointer-events: none; opacity: 0; transition: opacity .45s ease;
+    color-scheme: light; background: transparent;
+  }
+  .thumb .preview.on { opacity: 1; }
+  .thumb .tag { position: absolute; right: 10px; top: 10px; z-index: 1; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+
+  /* Video player overlay (used on the published site; inside a preview frame the card opens Vimeo instead) */
+  .player {
+    position: fixed; inset: 0; z-index: 50;
+    display: grid; place-items: center;
+    padding: calc(56px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    background: rgba(8, 8, 8, .92);
+  }
+  .player-frame { width: min(1200px, 100%); aspect-ratio: 16 / 9; max-height: 100%; background: var(--film); }
+  /* color-scheme: light matches Vimeo's player, so the browser doesn't paint a white backdrop behind it while it loads */
+  .player-frame iframe { width: 100%; height: 100%; border: 0; display: block; color-scheme: light; background: transparent; }
+  .player-bar {
+    position: absolute; top: calc(14px + env(safe-area-inset-top, 0px));
+    left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--film-ink);
+  }
+  .player-title { font-size: .72rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .player-close {
+    font: inherit; font-size: .72rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+    background: none; color: var(--film-ink); border: 1px solid rgba(242, 242, 240, .4); padding: 8px 14px; cursor: pointer;
+  }
+  .player-close:hover { border-color: var(--film-ink); }
+  /* neutral placeholder frames; real stills will bring their own colour */
+  .t1 { background: radial-gradient(ellipse at 70% 35%, #3d3d3c, var(--film) 70%); }
+  .t2 { background: linear-gradient(120deg, #2c2c2b, var(--film) 60%); }
+  .t3 { background: linear-gradient(200deg, #4a4a49, #161616 65%); }
+  .t4 { background: radial-gradient(circle at 30% 60%, #3a3a39, var(--film) 65%); }
+  .t5 { background: linear-gradient(45deg, var(--film), #424241); }
+  .t6 { background: linear-gradient(180deg, #353534, var(--film)); }
+  .work a.card { text-decoration: none; display: block; }
+  /* selected video: a single orange frame */
+  .work a.card:hover .thumb, .work a.card:focus-visible .thumb { box-shadow: 0 0 0 2px var(--heat-o); }
+  .work-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px; margin-top: 16px;
+  }
+  .work h3 {
+    font-size: 1.75rem; margin: 0; min-width: 0;
+  }
+  .work .year { font-size: .78rem; color: var(--ink-muted); }
+  .work .meta { font-size: .85rem; color: var(--ink-muted); margin: 6px 0 0; }
+
+  /* Profile */
+  .about { display: grid; grid-template-columns: 1.3fr 1fr; gap: 64px; }
+  .about p { margin: 0 0 20px; max-width: 44ch; font-size: 1.3rem; line-height: 1.55; text-wrap: pretty; }
+  .about p.quiet { color: var(--ink-muted); font-size: 1rem; }
+  .specs { list-style: none; padding: 0; margin: 0; }
+  .specs li {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  .specs li:first-child { border-top: 1px solid var(--line); }
+  .specs li span:first-child { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-muted); padding-top: 3px; }
+  .specs li span:last-child { text-align: right; }
+
+  /* Contact */
+  .contact-mail { font-size: clamp(1.5rem, 5.2vw, 3.6rem); margin: 0 0 28px; overflow-wrap: anywhere; text-transform: none; }
+  .btn {
+    font: inherit; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .16em;
+    cursor: pointer; background: var(--ink); color: var(--on-ink);
+    border: 1px solid var(--ink); padding: 12px 20px;
+  }
+  .btn:hover { background: transparent; color: var(--ink); }
+  .links { list-style: none; padding: 0; margin: 56px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; }
+  .links li { border-top: 1px solid var(--line); }
+  .links a { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0; text-decoration: none; }
+  .links a span:first-child { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-muted); padding-top: 2px; }
+  .links a:hover span:last-child { text-decoration: underline; text-decoration-color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+
+  footer {
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 28px 0 40px; border-top: 1px solid var(--line);
+    font-size: .75rem; color: var(--ink-muted);
+  }
+
+  @media (max-width: 720px) {
+    .name { font-size: 19vw; }
+    .hud { grid-template-columns: 1fr auto; }
+    section { padding: 64px 0; }
+    .about { grid-template-columns: 1fr; gap: 40px; }
+    .reel { aspect-ratio: 16 / 9; margin-bottom: 56px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#" aria-label="Diego Rosas">
+      <span class="brand-name" role="img" aria-label="Diego Rosas"><i aria-hidden="true" style="--i:0;--w:100%;--wt:700">D</i><i aria-hidden="true" style="--i:1;--w:100%;--wt:700">I</i><i aria-hidden="true" style="--i:2;--w:100%;--wt:700">E</i><i aria-hidden="true" style="--i:3;--w:124%;--wt:820">G</i><i aria-hidden="true" style="--i:4;--w:150%;--wt:900">O</i><i class="gap" aria-hidden="true"></i><i aria-hidden="true" style="--i:6;--w:124%;--wt:820">R</i><i aria-hidden="true" style="--i:7;--w:108%;--wt:750">O</i><i aria-hidden="true" style="--i:8;--w:100%;--wt:700">S</i><i aria-hidden="true" style="--i:9;--w:100%;--wt:700">A</i><i aria-hidden="true" style="--i:10;--w:100%;--wt:700">S</i></span>
+    </a>
+    <nav>
+      <a href="#work">Work</a>
+      <a href="#profile">Profile</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="stage" id="stage">
+      <div class="hud">
+        <div class="ruler" aria-hidden="true"></div>
+        <p class="tc-read mono" aria-hidden="true"><b>TC</b><span id="tc">00:00:22:12</span></p>
+      </div>
+
+      <h1 class="name display" id="name" aria-label="Diego Rosas"></h1>
+
+      <canvas class="wave" id="wave" aria-hidden="true"></canvas>
+
+      <div class="meta-row">
+        <p class="label">Film editor based in Mexico City</p>
+      </div>
+
+      <div class="playhead" id="ph" aria-hidden="true"></div>
+    </div>
+
+    <section id="work">
+      <div class="sec-head">
+        <h2 class="display">Work</h2>
+        <div class="filters" role="group" aria-label="Filter by type">
+          <button type="button" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-filter="automotive" aria-pressed="false">Automotive</button>
+          <button type="button" data-filter="storytelling" aria-pressed="false">Storytelling</button>
+          <button type="button" data-filter="short" aria-pressed="false">Short Films</button>
+          <button type="button" data-filter="beauty" aria-pressed="false">Beauty</button>
+          <button type="button" data-filter="music" aria-pressed="false">Music</button>
+        </div>
+      </div>
+
+      <div class="work-grid">
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/1181024431" target="_blank" rel="noopener" data-vimeo="1181024431" data-title="RAM">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2143285227-f9df780e3da0a3f86f0e7f830f6016da5aca9be53fe90d83f6a9de5236e220f2-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:01:11</span></div>
+          <div class="work-row"><h3 class="display">RAM</h3><span class="year mono">2025</span></div>
+          <p class="meta">Hechas para México</p>
+        </a></article>
+        <article class="work" data-type="storytelling"><a class="card" href="https://vimeo.com/1033588758" target="_blank" rel="noopener" data-vimeo="1033588758" data-title="Uber Eats">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/1954736429-b1b268d47cdb6645808fc7f5ca12bf78ec66cd278f9d3d07469400cfb917e949-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:30</span></div>
+          <div class="work-row"><h3 class="display">Uber Eats</h3><span class="year mono">2024</span></div>
+          <p class="meta">With Gael</p>
+        </a></article>
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/872057196" target="_blank" rel="noopener" data-vimeo="872057196" data-title="OLX">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019898912-97d491bf3ead1ee8fefc648a2b4278ae292e4234ce48b54514df71ca45636514-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:01:07</span></div>
+          <div class="work-row"><h3 class="display">OLX</h3><span class="year mono">2023</span></div>
+          <p class="meta">Se trata de ti</p>
+        </a></article>
+        <article class="work" data-type="short"><a class="card" href="https://vimeo.com/1249556833" target="_blank" rel="noopener" data-vimeo="1249556833" data-title="Elizabeth Speaks">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2229956267-5a28eebc5648c82bd0024911846bf7f6b56c32c259591fcd6023ae9fb5c9dffa-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:09:24</span></div>
+          <div class="work-row"><h3 class="display">Elizabeth Speaks</h3><span class="year mono">2026</span></div>
+          <p class="meta">By Naima Mora</p>
+        </a></article>
+        <article class="work" data-type="short"><a class="card" href="https://vimeo.com/1249554676" target="_blank" rel="noopener" data-vimeo="1249554676" data-title="Los jaguares no viven en el mar">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2229953916-8d83b1ee4f9c8fb1d5de72b21a04d47c2c6cb99bbd0bcc6b1f1f0dedd7fda639-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:16:12</span></div>
+          <div class="work-row"><h3 class="display">Los jaguares no viven en el mar</h3><span class="year mono">2026</span></div>
+          <p class="meta">Short film</p>
+        </a></article>
+        <article class="work" data-type="storytelling"><a class="card" href="https://vimeo.com/1087782357" target="_blank" rel="noopener" data-vimeo="1087782357" data-title="Gatorade">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019862929-75c466ee1e1cebf9d2bff53afcfc36b101e2cfdcd484c9416e2c499c9e5f9649-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Gatorade</h3><span class="year mono">2025</span></div>
+          <p class="meta">Gatorade es para ti</p>
+        </a></article>
+        <article class="work" data-type="storytelling"><a class="card" href="https://vimeo.com/1087775986" target="_blank" rel="noopener" data-vimeo="1087775986" data-title="Marías">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019855901-667631582f827623a990a0b03e7d0750b2ad5a9f1aa77855e9780f21728961a0-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:01:26</span></div>
+          <div class="work-row"><h3 class="display">Marías</h3><span class="year mono">2025</span></div>
+          <p class="meta">Hero film</p>
+        </a></article>
+        <article class="work" data-type="storytelling"><a class="card" href="https://vimeo.com/1133593003" target="_blank" rel="noopener" data-vimeo="1133593003" data-title="Call of Duty">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2078239575-f0f6bc4bc5366ef65a92b7fcbe4f295db3dc32e7617dab6b62c10c1982685d0b-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:49</span></div>
+          <div class="work-row"><h3 class="display">Call of Duty</h3><span class="year mono">2025</span></div>
+          <p class="meta">Replacer stand-up</p>
+        </a></article>
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/878471570" target="_blank" rel="noopener" data-vimeo="878471570" data-title="Volkswagen Glamour">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/1744439078-27db04dbcde156a71fc65ccf6de56f9488f1b49f78aaf4485ad884e8e4ca14f6-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:02:41</span></div>
+          <div class="work-row"><h3 class="display">Volkswagen Glamour</h3><span class="year mono">2023</span></div>
+          <p class="meta">With Ana Claudia Talancón</p>
+        </a></article>
+        <article class="work" data-type=""><a class="card" href="https://vimeo.com/1087915093" target="_blank" rel="noopener" data-vimeo="1087915093" data-title="Coca-Cola">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2020026646-4e4f6d77cc5f1a61266b22693abae5789bfeb67e4c8468cfc0d955acfb46d54d-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Coca-Cola</h3><span class="year mono">2025</span></div>
+          <p class="meta">World Cup promo</p>
+        </a></article>
+        <article class="work" data-type="beauty"><a class="card" href="https://vimeo.com/1087809045" target="_blank" rel="noopener" data-vimeo="1087809045" data-title="Nutrisse">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019894688-aa957b00222a7bf7466092e14e6bea21e912bcd10f57cdf25c52f9aa21af7da9-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Nutrisse</h3><span class="year mono">2025</span></div>
+          <p class="meta">Colección Actitud Castaña</p>
+        </a></article>
+        <article class="work" data-type=""><a class="card" href="https://vimeo.com/1130439066" target="_blank" rel="noopener" data-vimeo="1130439066" data-title="Drama Reel">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2074130375-0bcb26978f4a78e8da49dd276f988af6f421b800fe2a9baebd027f70dc4657de-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:01:55</span></div>
+          <div class="work-row"><h3 class="display">Drama Reel</h3><span class="year mono">2024</span></div>
+          <p class="meta">Reel</p>
+        </a></article>
+        <article class="work" data-type="music"><a class="card" href="https://vimeo.com/1087913152" target="_blank" rel="noopener" data-vimeo="1087913152" data-title="Amazon Music · Eden">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2073909764-ecdec53f91e66b9d68d5b90bdd37471bad9d6fd9776d67c38621bcfb397fb868-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:02:31</span></div>
+          <div class="work-row"><h3 class="display">Amazon Music · Eden</h3><span class="year mono">2025</span></div>
+          <p class="meta">Music video</p>
+        </a></article>
+        <article class="work" data-type=""><a class="card" href="https://vimeo.com/1130282372" target="_blank" rel="noopener" data-vimeo="1130282372" data-title="Doritos">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2078240350-5ee6931c8f1d2fe4c804f7800eaf05c1c5a85aa05d9d279837da1896fcd801ee-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:15</span></div>
+          <div class="work-row"><h3 class="display">Doritos</h3><span class="year mono">2025</span></div>
+          <p class="meta">Somos de Otro Planeta</p>
+        </a></article>
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/1087809723" target="_blank" rel="noopener" data-vimeo="1087809723" data-title="Hyundai Santa Fe">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019895544-c189a613c0686ac19bc287d121d773d24db63ed190a2f9ae11e21812984f7736-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Hyundai Santa Fe</h3><span class="year mono">2025</span></div>
+          <p class="meta">Posibilidades Infinitas</p>
+        </a></article>
+        <article class="work" data-type="beauty"><a class="card" href="https://vimeo.com/851953876" target="_blank" rel="noopener" data-vimeo="851953876" data-title="Neutrogena">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/1706844364-0173d9b67a36b8168bb9a1a2a35d8e4a7d997438a6778c2ce0a84da02ddd3936-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Neutrogena</h3><span class="year mono">2023</span></div>
+          <p class="meta">Commercial</p>
+        </a></article>
+        <article class="work" data-type="music"><a class="card" href="https://vimeo.com/878472244" target="_blank" rel="noopener" data-vimeo="878472244" data-title="The Red Waves · Helios">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019895371-fecfe3654d3def5734767b92d245c5a88d0ea92f34d6e48c2cf506e9ffe5ccac-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:03:32</span></div>
+          <div class="work-row"><h3 class="display">The Red Waves · Helios</h3><span class="year mono">2023</span></div>
+          <p class="meta">Music video</p>
+        </a></article>
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/1133607969" target="_blank" rel="noopener" data-vimeo="1133607969" data-title="Ford Ranger">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2078258266-eabb06921e1fff29b57ff0035405600c99396d2968270b32ba17079bb33cda23-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:20</span></div>
+          <div class="work-row"><h3 class="display">Ford Ranger</h3><span class="year mono">2025</span></div>
+          <p class="meta">Commercial</p>
+        </a></article>
+        <article class="work" data-type="beauty"><a class="card" href="https://vimeo.com/1087774362" target="_blank" rel="noopener" data-vimeo="1087774362" data-title="Colgate">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/2019852711-49cff08de174316bd844de54d25930f621d37264420305a6ccb90165ed15ce87-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:30</span></div>
+          <div class="work-row"><h3 class="display">Colgate</h3><span class="year mono">2025</span></div>
+          <p class="meta">100 años celebrando sonrisas</p>
+        </a></article>
+        <article class="work" data-type="automotive"><a class="card" href="https://vimeo.com/872059868" target="_blank" rel="noopener" data-vimeo="872059868" data-title="Volkswagen Taigun">
+          <div class="thumb"><img src="https://i.vimeocdn.com/video/1734851857-6d3b3be826717249627775ec9de2b1d449d8965425818f7bc0a896cb52fb31fa-d_1280x720" alt="" loading="lazy" onerror="this.remove()"><span class="tag mono">00:00:45</span></div>
+          <div class="work-row"><h3 class="display">Volkswagen Taigun</h3><span class="year mono">2023</span></div>
+          <p class="meta">El acompañante perfecto</p>
+        </a></article>
+      </div>
+    </section>
+
+    <section id="profile">
+      <div class="sec-head">
+        <h2 class="display">Profile</h2>
+      </div>
+      <div class="about">
+        <div>
+          <p>Film editor based in Mexico City, working from narrative: attentive to the details of the frame, the meaning of the image and the craft of storytelling. Music is one of the great passions behind every cut.</p>
+        </div>
+        <ul class="specs">
+          <li><span>Edit</span><span>Premiere Pro · DaVinci Resolve · Avid Media Composer</span></li>
+          <li><span>Languages</span><span>Español · English</span></li>
+          <li><span>Availability</span><span>Worldwide</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="sec-head">
+        <h2 class="display">Contact</h2>
+      </div>
+      <p class="contact-mail display" id="mail">diego_leonardo@outlook.es</p>
+      <button class="btn" id="copy" type="button">Copy email</button>
+      <ul class="links">
+        <li><a href="https://www.instagram.com/dieg.edl" target="_blank" rel="noopener"><span>Instagram</span><span class="mono">@dieg.edl</span></a></li>
+        <li><a href="https://vimeo.com/diegorosas" target="_blank" rel="noopener"><span>Vimeo</span><span class="mono">vimeo.com/diegorosas</span></a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 Diego Rosas</span>
+    <span>Film editor · Mexico City</span>
+  </footer>
+</div>
+
+<div class="player" id="player" hidden role="dialog" aria-modal="true" aria-labelledby="player-title">
+  <div class="player-bar">
+    <p class="player-title" id="player-title"></p>
+    <button class="player-close" id="player-close" type="button">Close</button>
+  </div>
+  <div class="player-frame" id="player-frame"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@vimeo/player@2.18.0/dist/player.min.js"></script>
+<script>
+  (function () {
+    /* ---------- Timeline hero ---------- */
+    var stage = document.getElementById('stage');
+    var nameEl = document.getElementById('name');
+    var ph = document.getElementById('ph');
+    var tcEl = document.getElementById('tc');
+    var canvas = document.getElementById('wave');
+    var ctx = canvas.getContext('2d');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    document.documentElement.classList.add('js');
+
+    // Build letters
+    var letters = [];
+    'DIEGO ROSAS'.split(' ').forEach(function (word) {
+      var w = document.createElement('span');
+      w.className = 'word';
+      w.setAttribute('aria-hidden', 'true');
+      word.split('').forEach(function (c) {
+        var s = document.createElement('span');
+        s.className = 'ch';
+        s.textContent = c;
+        w.appendChild(s);
+        letters.push(s);
+      });
+      nameEl.appendChild(w);
+    });
+
+    // Deterministic waveform amplitudes
+    function amp(i) {
+      var h = Math.sin(i * 12.9898) * 43758.5453; h = h - Math.floor(h);
+      var env = Math.abs(Math.sin(i * 0.045 + 0.6)) * 0.7 + 0.3;
+      var beat = (i % 16 === 0) ? 1 : (i % 8 === 0 ? 0.8 : 0);
+      return Math.min(1, Math.max(0.08, env * (0.35 + 0.55 * h) + beat * 0.35));
+    }
+
+    var colors = {};
+    function readColors() {
+      var cs = getComputedStyle(document.documentElement);
+      ['--ink', '--line', '--ink-muted', '--heat-o'].forEach(function (k) { colors[k] = cs.getPropertyValue(k).trim(); });
+    }
+    readColors();
+    function hexA(hex, a) {
+      var n = parseInt(hex.replace('#', ''), 16);
+      return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+    new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    var dpr = 1, cw = 0, ch = 0;
+    function sizeCanvas() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      cw = canvas.clientWidth; ch = canvas.clientHeight;
+      canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+    }
+    sizeCanvas();
+    window.addEventListener('resize', function () { sizeCanvas(); measure(); draw(); });
+
+    var FPS = 24, TOTAL = 150 * FPS; // 00:02:30:00
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function timecode(frac) {
+      var f = Math.round(frac * TOTAL);
+      var fr = f % FPS, s = Math.floor(f / FPS);
+      return '00:' + pad(Math.floor(s / 60)) + ':' + pad(s % 60) + ':' + pad(fr);
+    }
+
+    // Plays one eased pass on load, then rests at the end. The letters only deform while it plays or while you scrub.
+    var target = 0, cur = 0, playT = 0, done = false, hovering = false, visible = true, last = 0, idleDrawn = false;
+    // amtLin moves at a steady rate; amt is its smoothstep, so the relax has a clean ease-out instead of a crawling tail
+    var amtLin = 1, amt = 1;
+    var PLAY_MS = 7000, RELAX_MS = 1400, ENGAGE_MS = 350;
+    if (reduce.matches) { target = cur = 1; done = true; amtLin = amt = 0; }
+    function ease(t) { return 0.5 - 0.5 * Math.cos(Math.PI * t); }
+
+    // Letter centres are measured once at rest, so a letter's own growth can't shift the point it reacts to
+    // (that feedback loop is what made it stutter as it slowed down).
+    var centers = [];
+    function measure() {
+      letters.forEach(function (l) { l.style.fontStretch = '100%'; l.style.fontWeight = '800'; });
+      var r = stage.getBoundingClientRect();
+      centers = letters.map(function (l) { var b = l.getBoundingClientRect(); return b.left + b.width / 2 - r.left; });
+    }
+
+    function draw() {
+      var r = stage.getBoundingClientRect();
+      var px = Math.min(cur * r.width, r.width - 8);
+      ph.style.transform = 'translateX(' + px + 'px)';
+      tcEl.textContent = timecode(cur);
+
+      var spread = Math.max(48, r.width * 0.1);
+      letters.forEach(function (l, i) {
+        var d = (centers[i] - px) / spread;
+        var g = Math.exp(-d * d);
+        // amt blends between the scrub shape and the plain resting type (100% width, 800 weight)
+        l.style.fontStretch = (100 + amt * (78 + 72 * g - 100)).toFixed(1) + '%';
+        l.style.fontWeight = (800 + amt * (480 + 420 * g - 800)).toFixed(1);
+      });
+
+      // waveform
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cw, ch);
+      var step = 5, bw = 3, mid = ch / 2;
+      var wpx = cur * cw;
+      // played part: orange that builds from faint to full toward the playhead
+      var heat = ctx.createLinearGradient(0, 0, Math.max(wpx, 1), 0);
+      heat.addColorStop(0, hexA(colors['--heat-o'], 0.18));
+      heat.addColorStop(0.6, hexA(colors['--heat-o'], 0.55));
+      heat.addColorStop(1, hexA(colors['--heat-o'], 1));
+      for (var x = 0, i = 0; x < cw; x += step, i++) {
+        var a = amp(i) * (mid - 2);
+        var near = Math.abs(x - wpx) < 18;
+        ctx.fillStyle = near ? colors['--heat-o'] : (x < wpx ? heat : colors['--line']);
+        ctx.fillRect(x, mid - a, bw, a * 2);
+      }
+    }
+
+    function tick(now) {
+      if (!visible) { last = 0; return; }
+      var dt = last ? Math.min(64, now - last) : 16; last = now;
+      if (!hovering && !done) {
+        playT += dt;
+        var k = Math.min(1, playT / PLAY_MS);
+        target = cur = ease(k);
+        if (k >= 1) done = true;
+      } else {
+        cur += (target - cur) * (reduce.matches ? 1 : 0.16);
+        if (Math.abs(target - cur) < 0.0005) cur = target;
+      }
+      var want = (hovering || !done) ? 1 : 0;
+      if (reduce.matches) amtLin = want;
+      else if (amtLin < want) amtLin = Math.min(want, amtLin + dt / ENGAGE_MS);
+      else if (amtLin > want) amtLin = Math.max(want, amtLin - dt / RELAX_MS);
+      amt = amtLin * amtLin * (3 - 2 * amtLin);
+      // once everything has settled, stop redrawing until the next scrub
+      var idle = done && !hovering && amtLin === 0 && cur === target;
+      if (!idle || !idleDrawn) draw();
+      idleDrawn = idle;
+      requestAnimationFrame(tick);
+    }
+
+    function setFromEvent(e) {
+      var r = stage.getBoundingClientRect();
+      target = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    }
+    stage.addEventListener('pointermove', function (e) { hovering = true; done = true; setFromEvent(e); });
+    stage.addEventListener('pointerdown', function (e) { hovering = true; done = true; setFromEvent(e); });
+    stage.addEventListener('pointerleave', function () { hovering = false; });
+    stage.addEventListener('pointercancel', function () { hovering = false; });
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        var was = visible;
+        visible = entries[0].isIntersecting;
+        if (visible && !was) requestAnimationFrame(tick);
+      }).observe(stage);
+    }
+
+    var started = false;
+    function boot() {
+      if (started) return;
+      started = true;
+      measure(); draw(); requestAnimationFrame(tick);
+    }
+    if (document.fonts && document.fonts.ready) { document.fonts.ready.then(boot); setTimeout(boot, 1500); } else boot();
+
+
+    /* ---------- Video player ---------- */
+    // Inside a preview frame (like the Claude preview) embeds are blocked, so cards just open Vimeo in a new tab.
+    var embedded = (function () { try { return window.top !== window.self; } catch (e) { return true; } })();
+    var player = document.getElementById('player');
+    var frame = document.getElementById('player-frame');
+    var ptitle = document.getElementById('player-title');
+    var lastCard = null;
+    function openPlayer(id, title, card) {
+      lastCard = card;
+      ptitle.textContent = title || '';
+      frame.innerHTML = '<iframe src="https://player.vimeo.com/video/' + id +
+        '?autoplay=1&title=0&byline=0&portrait=0&dnt=1" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="' +
+        (title || 'Video').replace(/"/g, '&quot;') + '"></iframe>';
+      player.hidden = false;
+      document.body.style.overflow = 'hidden';
+      document.getElementById('player-close').focus();
+    }
+    function closePlayer() {
+      if (player.hidden) return;
+      player.hidden = true;
+      frame.innerHTML = '';
+      document.body.style.overflow = '';
+      if (lastCard) lastCard.focus();
+    }
+    document.querySelectorAll('a[data-vimeo]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        if (embedded) return;
+        e.preventDefault();
+        openPlayer(a.dataset.vimeo, a.dataset.title, a);
+      });
+    });
+    document.getElementById('player-close').addEventListener('click', closePlayer);
+    player.addEventListener('click', function (e) { if (e.target === player) closePlayer(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePlayer(); });
+
+    /* ---------- Hover previews ---------- */
+    // Only with a real mouse, outside preview frames, and when the viewer hasn't asked for less motion.
+    var canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (canHover && !embedded && !reduce.matches) {
+      var active = null;
+      function stopPreview(card) {
+        var f = card && card.querySelector('.preview');
+        if (!f) return;
+        f.classList.remove('on');
+        setTimeout(function () { if (f.parentNode && !f.classList.contains('on')) f.remove(); }, 450);
+      }
+      document.querySelectorAll('.work a[data-vimeo]').forEach(function (a) {
+        var timer = null;
+        a.addEventListener('mouseenter', function () {
+          // short delay so sweeping the cursor across the grid doesn't load every player
+          timer = setTimeout(function () {
+            if (active && active !== a) stopPreview(active);
+            active = a;
+            var thumb = a.querySelector('.thumb');
+            var f = thumb.querySelector('.preview');
+            if (!f) {
+              f = document.createElement('iframe');
+              f.className = 'preview';
+              f.setAttribute('aria-hidden', 'true');
+              f.setAttribute('tabindex', '-1');
+              f.setAttribute('allow', 'autoplay');
+              f.src = 'https://player.vimeo.com/video/' + a.dataset.vimeo + '?background=1&muted=1&loop=1&autopause=0&dnt=1';
+              var tag = thumb.insertBefore(f, thumb.querySelector('.tag'));
+              var show = function () { if (active === a) f.classList.add('on'); };
+              if (window.Vimeo && window.Vimeo.Player) {
+                // fade in only once frames are actually playing, so there is never a blank or white box
+                try { new window.Vimeo.Player(f).on('playing', show); } catch (e) { f.addEventListener('load', function () { setTimeout(show, 900); }); }
+              } else {
+                f.addEventListener('load', function () { setTimeout(show, 900); });
+              }
+            } else {
+              f.classList.add('on');
+            }
+          }, 220);
+        });
+        a.addEventListener('mouseleave', function () {
+          clearTimeout(timer);
+          stopPreview(a);
+          if (active === a) active = null;
+        });
+      });
+    }
+
+    /* ---------- Work filters ---------- */
+    var fbtns = document.querySelectorAll('.filters button');
+    var items = document.querySelectorAll('.work');
+    // a video can carry several categories ("automotive storytelling"); one with none shows only under All
+    function types(it) { return (it.dataset.type || '').split(/\s+/).filter(Boolean); }
+    // hide filters that have no videos yet (they appear on their own once a video uses them)
+    fbtns.forEach(function (b) {
+      var f = b.dataset.filter;
+      if (f !== 'all' && ![].some.call(items, function (it) { return types(it).indexOf(f) > -1; })) b.hidden = true;
+    });
+    fbtns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var f = b.dataset.filter;
+        fbtns.forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        items.forEach(function (it) { it.hidden = !(f === 'all' || types(it).indexOf(f) > -1); });
+      });
+    });
+
+    /* ---------- Copy email ---------- */
+    var btn = document.getElementById('copy');
+    var mail = document.getElementById('mail');
+    btn.addEventListener('click', function () {
+      var text = mail.textContent.trim();
+      function done(ok) {
+        btn.textContent = ok ? 'Copied' : 'Select and copy';
+        setTimeout(function () { btn.textContent = 'Copy email'; }, 2000);
+      }
+      function fallback() {
+        var range = document.createRange();
+        range.selectNodeContents(mail);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        done(false);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      } else {
+        fallback();
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
