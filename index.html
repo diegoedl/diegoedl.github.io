@@ -210,9 +210,20 @@
     padding: calc(56px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
     background: rgba(8, 8, 8, .92);
   }
-  .player-frame { width: min(1200px, 100%); aspect-ratio: 16 / 9; max-height: 100%; background: var(--film); }
+  /* width is capped by both the screen width and the screen height, so the 16:9 box always fits without stretching */
+  .player-frame {
+    position: relative; overflow: hidden; background: var(--film);
+    width: min(1200px, 100%, calc((100vh - 140px) * 16 / 9));
+    width: min(1200px, 100%, calc((100dvh - 140px) * 16 / 9));
+    aspect-ratio: 16 / 9;
+  }
   /* color-scheme: light matches Vimeo's player, so the browser doesn't paint a white backdrop behind it while it loads */
-  .player-frame iframe { width: 100%; height: 100%; border: 0; display: block; color-scheme: light; background: transparent; }
+  /* iPhone web views (Instagram, Safari) stretch iframes to their content width; absolute positioning plus the
+     1px / min-width trick keeps the player inside the box */
+  .player-frame iframe {
+    position: absolute; inset: 0; width: 1px; min-width: 100%; height: 100%;
+    border: 0; display: block; color-scheme: light; background: transparent;
+  }
   .player-bar {
     position: absolute; top: calc(14px + env(safe-area-inset-top, 0px));
     left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
