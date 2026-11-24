@@ -116,9 +116,12 @@
   .tc-read { font-size: .85rem; color: var(--ink); }
   .tc-read b { font-weight: 500; color: var(--ink-muted); margin-right: 8px; font-size: .7rem; letter-spacing: .16em; }
 
+  /* the layout is fixed per screen size (one line on wide screens, one word per line on phones), so letters
+     growing and shrinking can never make the name re-wrap mid-animation; contain keeps each frame's relayout local */
   .name {
-    margin: 26px 0 14px; display: flex; flex-wrap: wrap; column-gap: .22em;
+    margin: 26px 0 14px; display: flex; flex-wrap: nowrap; column-gap: .22em;
     font-size: clamp(3.4rem, 11.5vw, 9rem); white-space: nowrap;
+    contain: layout;
   }
   .name .word { display: inline-flex; }
   .name .ch { display: inline-block; font-stretch: 100%; font-weight: 800; }
@@ -289,7 +292,7 @@
   }
 
   @media (max-width: 720px) {
-    .name { font-size: 19vw; }
+    .name { font-size: 17vw; flex-direction: column; }
     .hud { grid-template-columns: 1fr auto; }
     section { padding: 64px 0; }
     .about { grid-template-columns: 1fr; gap: 40px; }
@@ -573,7 +576,7 @@
     // (that feedback loop is what made it stutter as it slowed down).
     var centers = [];
     function measure() {
-      letters.forEach(function (l) { l.style.fontStretch = '100%'; l.style.fontWeight = '800'; });
+      letters.forEach(function (l) { l.style.fontStretch = '100%'; l.style.fontWeight = '800'; l._st = 100; l._wt = 800; });
       var r = stage.getBoundingClientRect();
       centers = letters.map(function (l) { var b = l.getBoundingClientRect(); return b.left + b.width / 2 - r.left; });
     }
@@ -589,8 +592,10 @@
         var d = (centers[i] - px) / spread;
         var g = Math.exp(-d * d);
         // amt blends between the scrub shape and the plain resting type (100% width, 800 weight)
-        l.style.fontStretch = (100 + amt * (78 + 72 * g - 100)).toFixed(1) + '%';
-        l.style.fontWeight = (800 + amt * (480 + 420 * g - 800)).toFixed(1);
+        var st = Math.round((100 + amt * (78 + 72 * g - 100)) * 4) / 4;   // quarter-percent steps
+        var wt = Math.round(800 + amt * (480 + 420 * g - 800));
+        if (st !== l._st) { l.style.fontStretch = st + '%'; l._st = st; }
+        if (wt !== l._wt) { l.style.fontWeight = wt; l._wt = wt; }
       });
 
       // waveform
